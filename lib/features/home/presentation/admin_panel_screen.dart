@@ -77,6 +77,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   List<Map<String, dynamic>> _messagesList = [];
   bool _loadingMessages = false;
 
+  // 7. Timeline Edit Parameters
+  String? _editingExpId;
+  String? _editingEduId;
+  String? _editingCertId;
+  List<Map<String, dynamic>> _expList = [];
+  List<Map<String, dynamic>> _eduList = [];
+  List<Map<String, dynamic>> _certList = [];
+  bool _loadingLists = false;
+
   @override
   void initState() {
     super.initState();
@@ -184,6 +193,41 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     }
   }
 
+  Future<void> _fetchLists() async {
+    if (_isSandboxMode) return;
+    setState(() => _loadingLists = true);
+    try {
+      final client = Supabase.instance.client;
+      final exps = await client.from('experiences').select().order('date_range', ascending: false);
+      final edus = await client.from('education').select().order('date_range', ascending: false);
+      final certs = await client.from('certifications').select();
+      
+      setState(() {
+        _expList = List<Map<String, dynamic>>.from(exps);
+        _eduList = List<Map<String, dynamic>>.from(edus);
+        _certList = List<Map<String, dynamic>>.from(certs);
+        _loadingLists = false;
+      });
+    } catch (e) {
+      setState(() => _loadingLists = false);
+      debugPrint('Error fetching timeline lists: $e');
+    }
+  }
+
+  Future<void> _deleteTimelineItem(String table, String id) async {
+    if (_isSandboxMode) return;
+    setState(() => _loadingLists = true);
+    try {
+      final client = Supabase.instance.client;
+      await client.from(table).delete().eq('id', id);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item deleted successfully.')));
+      await _fetchLists();
+    } catch (e) {
+      setState(() => _loadingLists = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting item: $e')));
+    }
+  }
+
   Future<void> _deleteInboxMessage(String id) async {
     if (_isSandboxMode) return;
     setState(() => _loadingMessages = true);
@@ -232,6 +276,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         );
         await _fetchAndPrepopulateProfile();
         await _fetchInboxMessages();
+        await _fetchLists();
         setState(() {
           _isLoggedIn = true;
           _isLoading = false;
@@ -404,7 +449,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     });
   }
 
-  // 3. SAVE TIMELINE EXPERIENCE
+  // 3. TIMELINE EXPERIENCES FORM
   Future<void> _saveExperience() async {
     if (!_expFormKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
@@ -419,9 +464,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     } else {
       try {
         final client = Supabase.instance.client;
-        final String uid = 'exp-${DateTime.now().millisecondsSinceEpoch}';
+        final String uid = _editingExpId ?? 'exp-${DateTime.now().millisecondsSinceEpoch}';
         
-        await client.from('experiences').insert({
+        await client.from('experiences').upsert({
           'id': uid,
           'company': _expCompanyController.text.trim(),
           'title': _expRoleController.text.trim(),
@@ -430,15 +475,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           'tags': _expTagsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
         });
 
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _editingExpId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Successfully saved timeline experience!')),
         );
         _clearExperienceForm();
+        await _fetchLists();
       } catch (e) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Supabase experience insert error: $e')),
+          SnackBar(content: Text('Supabase experience upsert error: $e')),
         );
       }
     }
@@ -450,6 +499,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _expDateRangeController.text = 'APR 2025 - PRESENT';
     _expBulletsController.clear();
     _expTagsController.text = 'Flutter, Cubit, REST API';
+    _editingExpId = null;
   }
 
   // 4. SAVE EDUCATION
@@ -467,9 +517,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     } else {
       try {
         final client = Supabase.instance.client;
-        final String uid = 'edu-${DateTime.now().millisecondsSinceEpoch}';
+        final String uid = _editingEduId ?? 'edu-${DateTime.now().millisecondsSinceEpoch}';
 
-        await client.from('education').insert({
+        await client.from('education').upsert({
           'id': uid,
           'institution': _eduInstitutionController.text.trim(),
           'degree': _eduDegreeController.text.trim(),
@@ -478,15 +528,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           'grade': _eduGradeController.text.trim().isNotEmpty ? _eduGradeController.text.trim() : null,
         });
 
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _editingEduId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Successfully deployed academic degree to Supabase!')),
         );
         _clearEducationForm();
+        await _fetchLists();
       } catch (e) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Supabase education insert error: $e')),
+          SnackBar(content: Text('Supabase education upsert error: $e')),
         );
       }
     }
@@ -498,6 +552,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _eduDateRangeController.text = '2021 - 2023';
     _eduCoursesController.clear();
     _eduGradeController.clear();
+    _editingEduId = null;
   }
 
   // 5. SAVE CERTIFICATION
@@ -515,9 +570,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     } else {
       try {
         final client = Supabase.instance.client;
-        final String uid = 'cert-${DateTime.now().millisecondsSinceEpoch}';
+        final String uid = _editingCertId ?? 'cert-${DateTime.now().millisecondsSinceEpoch}';
 
-        await client.from('certifications').insert({
+        await client.from('certifications').upsert({
           'id': uid,
           'title': _certTitleController.text.trim(),
           'category': _certCategoryController.text.trim(),
@@ -525,15 +580,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           'description': _certDescController.text.trim(),
         });
 
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _editingCertId = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Successfully deployed certification to Supabase!')),
         );
         _clearCertificationForm();
+        await _fetchLists();
       } catch (e) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Supabase certification insert error: $e')),
+          SnackBar(content: Text('Supabase certification upsert error: $e')),
         );
       }
     }
@@ -544,6 +603,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _certCategoryController.text = 'Certification';
     _certIssuerController.clear();
     _certDescController.clear();
+    _editingCertId = null;
   }
 
   @override
@@ -1115,8 +1175,33 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ),
                 child: _isLoading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                    : Text('Save Experience to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                    : Text(_editingExpId != null ? 'Update Experience Record' : 'Save Experience to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
+            ),
+            if (_editingExpId != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Center(
+                  child: TextButton(
+                    onPressed: _clearExperienceForm,
+                    child: const Text('Cancel Edit', style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 32),
+            _buildTimelineList(
+              items: _expList,
+              titleKey: 'title',
+              subtitleKey: 'company',
+              onEdit: (item) {
+                setState(() => _editingExpId = item['id']);
+                _expCompanyController.text = item['company'] ?? '';
+                _expRoleController.text = item['title'] ?? '';
+                _expDateRangeController.text = item['date_range'] ?? '';
+                _expBulletsController.text = (item['bullets'] as List?)?.join('\n') ?? '';
+                _expTagsController.text = (item['tags'] as List?)?.join(', ') ?? '';
+              },
+              onDelete: (item) => _deleteTimelineItem('experiences', item['id']),
             ),
             const SizedBox(height: 24),
           ],
@@ -1165,8 +1250,33 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ),
                 child: _isLoading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                    : Text('Save Academic degree to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                    : Text(_editingEduId != null ? 'Update Education Record' : 'Save Academic degree to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
+            ),
+            if (_editingEduId != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Center(
+                  child: TextButton(
+                    onPressed: _clearEducationForm,
+                    child: const Text('Cancel Edit', style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 32),
+            _buildTimelineList(
+              items: _eduList,
+              titleKey: 'degree',
+              subtitleKey: 'institution',
+              onEdit: (item) {
+                setState(() => _editingEduId = item['id']);
+                _eduInstitutionController.text = item['institution'] ?? '';
+                _eduDegreeController.text = item['degree'] ?? '';
+                _eduDateRangeController.text = item['date_range'] ?? '';
+                _eduCoursesController.text = (item['courses'] as List?)?.join(', ') ?? '';
+                _eduGradeController.text = item['grade'] ?? '';
+              },
+              onDelete: (item) => _deleteTimelineItem('education', item['id']),
             ),
             const SizedBox(height: 24),
           ],
@@ -1213,8 +1323,32 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ),
                 child: _isLoading
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                    : Text('Save Certification to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                    : Text(_editingCertId != null ? 'Update Certification Record' : 'Save Certification to Database', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
+            ),
+            if (_editingCertId != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Center(
+                  child: TextButton(
+                    onPressed: _clearCertificationForm,
+                    child: const Text('Cancel Edit', style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 32),
+            _buildTimelineList(
+              items: _certList,
+              titleKey: 'title',
+              subtitleKey: 'issuer',
+              onEdit: (item) {
+                setState(() => _editingCertId = item['id']);
+                _certTitleController.text = item['title'] ?? '';
+                _certCategoryController.text = item['category'] ?? '';
+                _certIssuerController.text = item['issuer'] ?? '';
+                _certDescController.text = item['description'] ?? '';
+              },
+              onDelete: (item) => _deleteTimelineItem('certifications', item['id']),
             ),
             const SizedBox(height: 24),
           ],
@@ -1390,4 +1524,65 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       ],
     );
   }
+
+  Widget _buildTimelineList({
+    required List<Map<String, dynamic>> items,
+    required String titleKey,
+    required String subtitleKey,
+    required Function(Map<String, dynamic>) onEdit,
+    required Function(Map<String, dynamic>) onDelete,
+  }) {
+    if (_loadingLists) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primaryCyan));
+    }
+    
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Text('No existing items found. Add one above!', style: GoogleFonts.inter(color: AppColors.textMuted)),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return GlassContainer(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(16),
+          borderColor: AppColors.glassBorder,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item[titleKey] ?? 'Unknown', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(item[subtitleKey] ?? '', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 13)),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_rounded, color: AppColors.primaryCyan, size: 20),
+                    onPressed: () => onEdit(item),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                    onPressed: () => onDelete(item),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
+
