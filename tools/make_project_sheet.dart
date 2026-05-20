@@ -1,6 +1,8 @@
 import 'dart:io';
 
-void main() async {
+void main(List<String> arguments) async {
+  final bool isSilent = arguments.contains('--silent');
+
   print('==================================================');
   print('    🚀 FLUTTER PORTFOLIO PROJECT SHEET GENERATOR   ');
   print('==================================================\n');
@@ -37,12 +39,22 @@ void main() async {
   if (pubspecContent.contains('sqflite:')) techList.add('SQLite Cache');
   if (pubspecContent.contains('google_maps_flutter:')) techList.add('Google Maps SDK');
 
-  // Prompt the user for details
-  final String role = _promptUser('💼 Enter your Developer Role (e.g., Senior Flutter Developer):', 'Senior Flutter Developer');
-  final String appStore = _promptUser('🍎 Enter Apple App Store URL (or press Enter for none):', '');
-  final String playStore = _promptUser('🤖 Enter Google Play Store URL (or press Enter for none):', '');
-  final String github = _promptUser('🌐 Enter GitHub Source URL (or press Enter for none):', '');
-  final String screenshotCsv = _promptUser('📸 Enter Screenshot URLs (comma-separated, or press Enter for default placeholders):', '');
+  String role = 'Senior Flutter Developer';
+  String appStore = '';
+  String playStore = '';
+  String github = '';
+  String screenshotCsv = '';
+
+  if (isSilent) {
+    print('⚡ Running in silent mode! Skipping all interactive prompts...');
+  } else {
+    // Prompt the user for details
+    role = _promptUser('💼 Enter your Developer Role (e.g., Senior Flutter Developer):', 'Senior Flutter Developer');
+    appStore = _promptUser('🍎 Enter Apple App Store URL (or press Enter for none):', '');
+    playStore = _promptUser('🤖 Enter Google Play Store URL (or press Enter for none):', '');
+    github = _promptUser('🌐 Enter GitHub Source URL (or press Enter for none):', '');
+    screenshotCsv = _promptUser('📸 Enter Screenshot URLs (comma-separated, or press Enter for default placeholders):', '');
+  }
 
   final List<String> screenshots = screenshotCsv.isNotEmpty
       ? screenshotCsv.split(',').map((s) => s.trim()).toList()
